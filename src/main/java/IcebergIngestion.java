@@ -106,11 +106,11 @@ public class IcebergIngestion {
         // The Java API requires you to explicitly instantiate an encoder for
         // any JavaBean you want to use for schema inference
         //
-        Encoder<Cust> custEncoder = Encoders.bean(Cust.class);
+        Encoder<IcebergIngestion.Cust> custEncoder = Encoders.bean(Cust.class);
         //
         // Create a container of the JavaBean instances
         //
-        List<Cust> data = Arrays.asList(
+        List<IcebergIngestion.Cust> data = Arrays.asList(
                 new Cust(1, "Widget Co", 120000.00, 0.00, "AZ"),
                 new Cust(2, "Acme Widgets", 410500.00, 500.00, "CA"),
                 new Cust(3, "Widgetry", 410500.00, 200.00, "CA"),

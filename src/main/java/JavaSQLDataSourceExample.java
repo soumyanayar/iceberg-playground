@@ -40,6 +40,8 @@ import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SaveMode;
 import org.apache.spark.sql.SparkSession;
 
+import javax.xml.crypto.Data;
+
 public class JavaSQLDataSourceExample {
 
     // $example on:schema_merging$
@@ -107,8 +109,8 @@ public class JavaSQLDataSourceExample {
                 .master("local")
                 .getOrCreate();
 
-        runBasicDataSourceExample(spark);
-        runGenericFileSourceOptionsExample(spark);
+        // runBasicDataSourceExample(spark);
+        // runGenericFileSourceOptionsExample(spark);
         runBasicParquetExample(spark);
         runParquetSchemaMergingExample(spark);
         runJsonDatasetExample(spark);
@@ -183,6 +185,10 @@ public class JavaSQLDataSourceExample {
         usersDF.select("name", "favorite_color").write().mode(SaveMode.Overwrite).save("namesAndFavColors.parquet");
         // $example off:generic_load_save_functions$
         // $example on:manual_load_options$
+
+        Dataset<Row> namesAndFavColorsDF = spark.read().parquet("namesAndFavColors.parquet");
+        namesAndFavColorsDF.show();
+
         Dataset<Row> peopleDF =
                 spark.read().format("json").load("src/main/resources/people.json");
         peopleDF.select("name", "age").write().mode(SaveMode.Overwrite).format("parquet").save("namesAndAges.parquet");

@@ -1,4 +1,6 @@
-firstName,lastName,age,location
+Col1,Col2,Col3,Col4
 David,Cooker,17,Redmond
 Kate,Lucy,27,Bellevue
 Mike,Patrick,44,Seattle
+John,Doe,35,Bel-Red
+Bob,Smith,56,Everett

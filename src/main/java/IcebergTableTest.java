@@ -24,9 +24,9 @@ public class IcebergTableTest {
 
         df.writeTo(SAMPLE_TABLE_NAME).createOrReplace();
         df.show();
-        df = spark.table(SAMPLE_TABLE_NAME);
+        Dataset<Row> df1 = spark.table(SAMPLE_TABLE_NAME);
         //df = spark.read().format("iceberg").load(SAMPLE_TABLE_NAME);
-        df.show();
+        df1.show();
     }
 
     static private SparkConf getSparkConfig() {

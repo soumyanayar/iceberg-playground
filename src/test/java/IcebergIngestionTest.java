@@ -1,28 +1,22 @@
 import static org.apache.iceberg.expressions.Expressions.hour;
 import static org.apache.iceberg.expressions.Expressions.month;
-import static org.apache.spark.sql.functions.lit;
 
-import org.apache.iceberg.PartitionSpec;
-import org.apache.iceberg.Schema;
-import org.apache.iceberg.SchemaParser;
-import org.apache.iceberg.Table;
-import org.apache.iceberg.UpdateSchema;
+import org.apache.iceberg.*;
 import org.apache.iceberg.hadoop.HadoopTables;
+import org.apache.iceberg.spark.IcebergSpark;
 import org.apache.iceberg.spark.SparkSchemaUtil;
 import org.apache.iceberg.types.Types;
 import org.apache.spark.SparkConf;
-import org.apache.spark.sql.Dataset;
-import org.apache.spark.sql.Row;
-import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.*;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
-import org.apache.spark.sql.types.StringType;
-import org.apache.spark.sql.types.StructField;
-import org.apache.spark.sql.types.StructType;
+import org.apache.spark.sql.types.*;
 import org.junit.Before;
 import org.junit.Test;
 
+import javax.xml.crypto.Data;
 import java.util.Arrays;
 
+import static org.apache.spark.sql.functions.*;
 import static org.junit.Assert.*;
 
 public class IcebergIngestionTest {
@@ -55,6 +49,20 @@ public class IcebergIngestionTest {
     }
 
     @Test
+    public void testLargeFileIngestionFromCSVSuccessful() {
+        final String targetDBName = "local.db.bigfile";
+        final String path = TEST_FILE_DIR_PATH + "/LargeData.csv";
+        Dataset<Row> df = spark.read()
+                .option("header", "true")
+                .option("inferSchema", "true")
+                .csv(path);
+
+        df.writeTo(targetDBName).createOrReplace();
+        df = spark.table(targetDBName);
+        assertEquals(10000000, df.count());
+    }
+
+    @Test
     public void testIcebergReadFromCSVAddNewFieldInTheMiddleSuccessful() throws NoSuchTableException {
         final String targetDBName = "local.db.individualnewfield";
         final String hadoopTablePath = "spark-warehouse/db/individualnewfield";
@@ -66,6 +74,7 @@ public class IcebergIngestionTest {
         df.writeTo(targetDBName).createOrReplace();
         df = spark.table(targetDBName);
         assertEquals(2, df.count());
+
         Table table = loadHadoopTable(hadoopTablePath);
         UpdateSchema updateSchema = table.updateSchema();
 
@@ -210,13 +219,123 @@ public class IcebergIngestionTest {
                 //.identity("level")
                 .build();
 
-        Table table = createOrReplaceHadoopTable(schema, spec, targetDBName);
+       Table table = createOrReplaceHadoopTable(schema, spec, targetDBName);
 
         // Update Partition Spec
         table.updateSpec()
-                .addField(month("event_time"))
+                .addField("level")
                 .removeField(hour("event_time"))
                 .commit();
+    }
+
+    @Test
+    public void testPartitionSpec1() throws AnalysisException {
+        final String file_location = TEST_FILE_DIR_PATH + "/individual_spike.csv";
+
+        SparkConf config = getSparkConfig();
+        spark = SparkSession
+                .builder()
+                .appName("icebergTesting")
+                .master("local")
+                .master("local")
+                .config(config)
+                .getOrCreate();
+
+        StructType schema = DataTypes.createStructType(new StructField[] {
+                DataTypes.createStructField("Col1", DataTypes.StringType, true),
+                DataTypes.createStructField("Col2", DataTypes.StringType, true),
+                DataTypes.createStructField("Col3", DataTypes.IntegerType, true),
+                DataTypes.createStructField("Col4", DataTypes.StringType, true),
+
+        });
+
+        Dataset<Row> df = spark.read().format("iceberg")
+                .option("header", "true")
+                .option("inferSchema", "true")
+                .schema(schema)
+                .csv(file_location);
+
+        IcebergSpark.registerBucketUDF(spark, "iceberg_bucket16", DataTypes.IntegerType, 2);
+
+        Column col = df.col("Col3");
+        df.sortWithinPartitions(expr("iceberg_bucket16(Col3)")).writeTo("local.db.small_partition_table").partitionedBy(bucket(2, col)).createOrReplace();
+
+        df.show();
+
+        df = spark.read().format("iceberg").load("local.db.small_partition_table");
+
+
+        Dataset<Row> df3 = spark.sql("select * from local.db.small_partition_table where Col4=\"Redmond\"");
+
+
+
+        df.show();
+    }
+
+    @Test
+    public void testPartitionSpec2() throws AnalysisException {
+        final String file_location = TEST_FILE_DIR_PATH + "/LargeData.csv";
+        final String targetDBName = "spark-warehouse/db/largePartition";
+
+        SparkConf config = getSparkConfig();
+        spark = SparkSession
+                .builder()
+                .appName("icebergTesting")
+                .master("local")
+                .master("local")
+                .config(config)
+                .getOrCreate();
+
+        StructType schema = DataTypes.createStructType(new StructField[] {
+                DataTypes.createStructField("Col1", DataTypes.StringType, true),
+                DataTypes.createStructField("Col2", DataTypes.StringType, true),
+                DataTypes.createStructField("Col3", DataTypes.StringType, true),
+                DataTypes.createStructField("Col4", DataTypes.IntegerType, true),
+
+        });
+
+        Dataset<Row> df = spark.read().format("iceberg")
+                .option("header", "true")
+                .option("inferSchema", "true")
+                .schema(schema)
+                .csv(file_location);
+
+        IcebergSpark.registerBucketUDF(spark, "iceberg_bucket16", DataTypes.IntegerType, 20);
+
+        Column col = df.col("Col4");
+        df.sortWithinPartitions(expr("iceberg_bucket16(Col4)")).writeTo("local.db.large_partition_table").partitionedBy(bucket(20, col)).createOrReplace();
+
+        df.show();
+
+        df = spark.read().format("iceberg").load("local.db.large_partition_table");
+
+        Dataset<Row> df3 = spark.sql("select * from local.db.large_partition_table where Col4=4601");
+
+        Dataset<Row> df4 = spark.sql("select * from local.db.large_partition_table.snapshots");
+
+        Dataset<Row> df5 = spark.sql("select * from local.db.large_partition_table.manifests");
+
+        Dataset<Row> df6 = spark.sql("select * from local.db.large_partition_table.history");
+
+       long snap_id = Long.parseLong("6492684780613891387");
+
+        Dataset<Row> df7 = spark.read()
+                .option("snapshot-id", snap_id)
+                .format("iceberg")
+                .load("local.db.large_partition_table");
+
+        /*CALL catalog_name.system.cherrypick_snapshot('local.db.large_partition_table.history', 1);*/
+
+    /*    df3.show();
+
+        df4.show();
+
+        df5.show();
+
+        df6.show();*/
+
+        df7.show();
+
     }
 
     // Iceberg schema data types: https://iceberg.apache.org/schemas/
